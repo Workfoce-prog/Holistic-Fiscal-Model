@@ -138,28 +138,19 @@ def load_data():
         "customer": DATA_DIR / "customer_payment_breakdown.csv",
     }
 
-    missing = [k for k, p in files.items() if not p.exists()]
-    if missing:
-        st.error("Required demo data files are missing.")
-        st.markdown("**Expected files:**")
-        for k, p in files.items():
-            st.code(str(p))
-        st.info(
-            "Fix: Ensure the `/data` folder exists in the GitHub repo "
-            "and includes all CSV files (committed and pushed)."
-        )
-        st.stop()
+    # If files exist, load them
+    if all(p.exists() for p in files.values()):
+        complexity = pd.read_csv(files["complexity"])
+        budget = pd.read_csv(files["budget"])
+        monthly = pd.read_csv(files["monthly"], parse_dates=["month"])
+        quarterly = pd.read_csv(files["quarterly"])
+        customer = pd.read_csv(files["customer"])
+        return complexity, budget, monthly, quarterly, customer
 
-    complexity = pd.read_csv(files["complexity"])
-    budget = pd.read_csv(files["budget"])
-    monthly = pd.read_csv(files["monthly"], parse_dates=["month"])
-    quarterly = pd.read_csv(files["quarterly"])
-    customer = pd.read_csv(files["customer"])
+    # Otherwise generate demo data (NO CRASH)
+    st.warning("Demo CSVs not found in /data. Auto-generating mock demo data for this session.")
+    return generate_demo_data()
 
-    return complexity, budget, monthly, quarterly, customer
-
-
-complexity, budget, monthly, quarterly, customer = load_data()
 
 # --------------------------------------------------
 # Metric functions
