@@ -2,6 +2,117 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
+def generate_demo_data():
+    np.random.seed(7)
+
+    counties = [
+        ("Hennepin", 27000),
+        ("Ramsey", 16500),
+        ("Dakota", 8500),
+        ("Anoka", 9800),
+        ("St. Louis", 7200),
+        ("Olmsted", 5200),
+        ("Stearns", 6100),
+        ("Blue Earth", 3200),
+        ("Carver", 2600),
+        ("Lake of the Woods", 450),
+    ]
+
+    fy = 2026
+    rows = []
+    for name, cases in counties:
+        dv = np.clip(np.random.normal(1.05 if name in ["Hennepin", "Ramsey", "St. Louis"] else 0.95, 0.12), 0.7, 1.6)
+        homelessness = np.clip(np.random.normal(1.15 if name in ["Hennepin", "Ramsey", "St. Louis"] else 0.9, 0.18), 0.6, 1.8)
+        unemployment = np.clip(np.random.normal(1.05 if name in ["St. Louis", "Stearns"] else 0.98, 0.10), 0.7, 1.5)
+        rural_access = np.clip(np.random.normal(1.45 if name in ["Lake of the Woods", "St. Louis"] else 0.9, 0.20), 0.6, 1.8)
+        court_delay = np.clip(np.random.normal(1.15 if name in ["Hennepin", "Ramsey"] else 1.0, 0.12), 0.7, 1.6)
+        ncp_volatility = np.clip(np.random.normal(1.10 if name in ["Hennepin", "Ramsey", "St. Louis"] else 0.95, 0.14), 0.6, 1.7)
+
+        overall = np.mean([dv, homelessness, unemployment, rural_access, court_delay, ncp_volatility])
+        rows.append([name, fy, dv, homelessness, unemployment, rural_access, court_delay, ncp_volatility, overall, cases])
+
+    complexity = pd.DataFrame(rows, columns=[
+        "county_name", "fiscal_year",
+        "dv_score", "homelessness_score", "unemployment_score",
+        "rural_access_score", "court_delay_score", "ncp_volatility_score",
+        "overall_complexity_score", "active_cases"
+    ])
+
+    cost_centers = ["Staff", "Enforcement", "Technology", "Outreach", "Administration"]
+    budget_rows = []
+    for _, r in complexity.iterrows():
+        base_budget = r["active_cases"] * 280
+        adj = 1 + (r["overall_complexity_score"] - 1) * 0.7
+        total_budget = base_budget * adj
+
+        splits = np.array([0.70, 0.15, 0.10, 0.03, 0.02])
+        splits = np.clip(splits + np.random.normal(0, 0.015, size=len(splits)), 0.01, 0.90)
+        splits = splits / splits.sum()
+
+        for cc, s in zip(cost_centers, splits):
+            budget_rows.append([fy, r["county_name"], cc, round(total_budget * s, 2)])
+
+    budget = pd.DataFrame(budget_rows, columns=["fiscal_year", "county_name", "cost_center", "allocated_amount"])
+
+    dates = pd.date_range("2024-01-01", periods=24, freq="MS")
+    ts_rows = []
+    for _, r in complexity.iterrows():
+        cname = r["county_name"]
+        cases = r["active_cases"]
+        comp = r["overall_complexity_score"]
+
+        annual_budget = budget[(budget["county_name"] == cname) & (budget["fiscal_year"] == fy)]["allocated_amount"].sum()
+        monthly_exp_base = annual_budget / 12
+
+        monthly_col_base = cases * np.random.uniform(70, 110)
+        arrears = cases * np.random.uniform(1200, 2200) * comp
+
+        for d in dates:
+            seas = 1 + 0.08 * np.sin(2 * np.pi * (d.month - 1) / 12.0)
+            exp = monthly_exp_base * np.random.normal(1.0, 0.06) * seas
+            col = monthly_col_base * np.random.normal(1.0, 0.10) * seas
+
+            pass_through = col * np.random.uniform(0.55, 0.70)
+            fees = col * np.random.uniform(0.01, 0.03)
+            retained = col - pass_through - fees
+
+            expected = cases * 95 * seas
+            arrears_change = (expected - col) * np.random.uniform(0.6, 1.1)
+            arrears = max(0, arrears + arrears_change)
+
+            ts_rows.append([cname, d, cases, comp, exp, col, pass_through, retained, fees, arrears])
+
+    monthly = pd.DataFrame(ts_rows, columns=[
+        "county_name", "month", "active_cases", "complexity_score",
+        "expenses", "collections", "pass_through_amount",
+        "state_retained_amount", "fee_amount", "arrears_total"
+    ])
+
+    q_df = monthly.copy()
+    q_df["quarter"] = pd.PeriodIndex(q_df["month"], freq="Q").astype(str)
+    quarterly = (q_df.groupby(["county_name", "quarter"], as_index=False)
+                 .agg(expenses=("expenses", "sum"), collections=("collections", "sum")))
+    quarterly["eligible_pct"] = np.clip(np.random.normal(0.80, 0.05, size=len(quarterly)), 0.65, 0.92)
+    quarterly["eligible_expenses"] = quarterly["expenses"] * quarterly["eligible_pct"]
+    quarterly["ffp_match_rate"] = 0.66
+    quarterly["ffp_match_value"] = quarterly["eligible_expenses"] * quarterly["ffp_match_rate"]
+
+    cust_demo = []
+    for cname, _ in counties:
+        for _i in range(50):
+            pay = np.random.choice([100, 150, 200, 250, 300, 400, 500], p=[0.08, 0.12, 0.18, 0.18, 0.18, 0.14, 0.12])
+            pt = pay * np.random.uniform(0.55, 0.75)
+            fee = pay * np.random.uniform(0.01, 0.03)
+            retained = pay * np.random.uniform(0.02, 0.08)
+            arrears_applied = max(0, pay - pt - fee - retained)
+            cust_demo.append([cname, pay, round(pt, 2), round(arrears_applied, 2), round(retained, 2), round(fee, 2)])
+
+    customer = pd.DataFrame(cust_demo, columns=[
+        "county_name", "payment_amount", "pass_through",
+        "arrears_applied", "state_retained", "fees"
+    ])
+
+    return complexity, budget, monthly, quarterly, customer
 
 # --------------------------------------------------
 # Page config
