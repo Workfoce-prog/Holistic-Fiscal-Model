@@ -2,6 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+st.set_page_config(page_title="Child Support Fiscal Leadership Demo", layout="wide")
+
+# ------------------------------
+# 1) Demo data generator
+# ------------------------------
 def generate_demo_data():
     np.random.seed(7)
 
@@ -114,17 +120,10 @@ def generate_demo_data():
 
     return complexity, budget, monthly, quarterly, customer
 
-# --------------------------------------------------
-# Page config
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Child Support Fiscal Leadership Demo",
-    layout="wide"
-)
 
-# --------------------------------------------------
-# Data loader (Cloud-safe)
-# --------------------------------------------------
+# ------------------------------
+# 2) Load data (CSV if exists, else generate)
+# ------------------------------
 @st.cache_data
 def load_data():
     BASE_DIR = Path(__file__).resolve().parent
@@ -138,18 +137,24 @@ def load_data():
         "customer": DATA_DIR / "customer_payment_breakdown.csv",
     }
 
-    # If files exist, load them
     if all(p.exists() for p in files.values()):
         complexity = pd.read_csv(files["complexity"])
         budget = pd.read_csv(files["budget"])
         monthly = pd.read_csv(files["monthly"], parse_dates=["month"])
         quarterly = pd.read_csv(files["quarterly"])
         customer = pd.read_csv(files["customer"])
-        return complexity, budget, monthly, quarterly, customer
+        return complexity, budget, monthly, quarterly, customer, "Loaded from repo /data CSVs"
 
-    # Otherwise generate demo data (NO CRASH)
-    st.warning("Demo CSVs not found in /data. Auto-generating mock demo data for this session.")
-    return generate_demo_data()
+    # fallback
+    complexity, budget, monthly, quarterly, customer = generate_demo_data()
+    return complexity, budget, monthly, quarterly, customer, "Auto-generated mock demo data (no /data in repo)"
+
+
+# IMPORTANT: This line must exist exactly like this
+complexity, budget, monthly, quarterly, customer, data_source = load_data()
+
+st.sidebar.caption(f"Data source: {data_source}")
+
 
 
 # --------------------------------------------------
